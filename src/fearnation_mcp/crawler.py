@@ -32,6 +32,7 @@ from fearnation_mcp.db import (
     upsert_post,
 )
 from fearnation_mcp.parser import ParsedPost, parse_post
+from fearnation_mcp.robots import fetch_robots_rules
 from fearnation_mcp.search import normalize_text
 from fearnation_mcp.utils import build_post_url, get_logger, validate_slug
 
@@ -254,6 +255,9 @@ def crawl_all(
     start = time.time()
     report = CrawlReport()
 
+    # Spec §7.2: fetch robots.txt once at crawl start; reject disallowed paths.
+    rules = fetch_robots_rules(client)
+
     try:
         sitemap_xml = fetch_url(client, _SITEMAP_URL)
     except httpx.HTTPError as exc:
@@ -303,6 +307,10 @@ def crawl_all(
         except ValueError:
             log.warning("invalid sitemap URL skipped", extra={"loc": entry.loc})
             report.posts_failed += 1
+            continue
+
+        if not rules.is_allowed(entry.loc):
+            log.info("robots.txt disallows path, skipping", extra={"url": entry.loc})
             continue
 
         # Skip if already indexed and lastmod unchanged
@@ -380,6 +388,9 @@ def _wrap_rss_html(content_html: str, title: str, pub_date: str) -> str:
 
 def refresh_rss(client: httpx.Client, conn: sqlite3.Connection) -> int:
     """Fetch RSS, upsert new posts. Returns count of new/updated posts."""
+    # Spec §7.2: fetch robots.txt once at refresh start; reject disallowed paths.
+    rules = fetch_robots_rules(client)
+
     try:
         rss_xml = fetch_url(client, _RSS_URL)
     except httpx.HTTPError as exc:
@@ -389,6 +400,9 @@ def refresh_rss(client: httpx.Client, conn: sqlite3.Connection) -> int:
     items = parse_rss(rss_xml)
     new_count = 0
     for item in items:
+        if not rules.is_allowed(item.link):
+            log.info("robots.txt disallows rss item, skipping", extra={"link": item.link})
+            continue
         wrapped_html = _wrap_rss_html(item.content_html, item.title, item.pub_date or "")
         parsed = parse_post(item.slug, wrapped_html)
         upsert_parsed_post(conn, item.slug, item.content_html, parsed)
@@ -401,3 +415,29 @@ def refresh_rss(client: httpx.Client, conn: sqlite3.Connection) -> int:
     )
     log.info("rss refresh complete", extra={"new_posts": new_count})
     return new_count
+
+
+def reparse_pending(conn: sqlite3.Connection) -> int:
+    """Re-parse posts whose ``parsed_at IS NULL`` using stored ``raw_html``.
+
+    Self-heal layer (spec §3 «启动时 re-parse parsed_at IS NULL ... 失败自动重试»).
+    Covers posts orphaned from the sitemap (deleted upstream) that
+    :func:`crawl_all` would otherwise never revisit. No network traffic —
+    uses the stored ``raw_html`` only. Returns the count of re-parsed posts.
+    """
+    rows = conn.execute(
+        "SELECT slug, raw_html FROM posts WHERE parsed_at IS NULL AND raw_html IS NOT NULL"
+    ).fetchall()
+    count = 0
+    for r in rows:
+        slug = r["slug"]
+        raw_html = r["raw_html"]
+        try:
+            parsed = parse_post(slug, raw_html)
+            upsert_parsed_post(conn, slug, raw_html, parsed)
+            count += 1
+        except Exception as exc:  # noqa: BLE001 — log + continue; parses never raise per spec
+            log.warning("reparse failed", extra={"slug": slug, "error": str(exc)})
+    if count:
+        log.info("startup reparse complete", extra={"reparsed": count})
+    return count
