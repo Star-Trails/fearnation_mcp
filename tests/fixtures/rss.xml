@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+<title>世界苦茶</title>
+<link>https://fearnation.club/</link>
+<description>FearNation Newsletter</description>
+<item>
+<title>世界苦茶 2024-01-15</title>
+<link>https://fearnation.club/shijie-kucha-2024-01-15/</link>
+<guid>https://fearnation.club/shijie-kucha-2024-01-15/</guid>
+<pubDate>Mon, 15 Jan 2024 08:00:00 GMT</pubDate>
+<dc:creator>fearnation</dc:creator>
+<description>今日要闻摘要</description>
+<content:encoded><![CDATA[
+<h1>苦茶数据</h1>
+<p>USD/CNH 7.21, USD/JPY 145.5</p>
+<h1>中国新闻</h1>
+<p><strong>• 华为发布新手机</strong><br>华为宣布 Mate 70 系列发布日期</p>
+<p><strong>• 上海自贸区扩展</strong><br>国务院宣布上海自贸区扩区方案</p>
+<h1>印太新闻</h1>
+<p><strong>• 日美联合军演</strong><br>自卫队与美军在冲绳周边举行联合演习</p>
+<div class="kg-card kg-button-card"><a href="#support">点击支持1美元/年</a></div>
+]]></content:encoded>
+</item>
+<item>
+<title>台海危機ALERT 2024-01-14</title>
+<link>https://fearnation.club/taiwan-alert-2024-01-14/</link>
+<pubDate>Sun, 14 Jan 2024 08:00:00 GMT</pubDate>
+<content:encoded><![CDATA[
+<h1>事件概述</h1>
+<p>1月13日，台湾举行总统大选。</p>
+<h1>各方反应</h1>
+<p><strong>• 美方祝贺</strong><br>白宫发表声明祝贺当选。</p>
+]]></content:encoded>
+</item>
+</channel>
+</rss>
