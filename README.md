@@ -83,4 +83,4 @@ See `docs/superpowers/specs/2026-07-08-fearnation-mcp-design.md`.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
