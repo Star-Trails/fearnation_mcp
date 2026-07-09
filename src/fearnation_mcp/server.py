@@ -18,11 +18,15 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-import httpx
 from mcp.server import MCPServer
 
 from fearnation_mcp.db import DB_PATH, get_connection, get_meta, set_meta
-from fearnation_mcp.utils import get_logger, validate_iso_date, validate_slug
+from fearnation_mcp.utils import (
+    get_logger,
+    make_http_client,
+    validate_iso_date,
+    validate_slug,
+)
 
 log = get_logger(__name__)
 
@@ -57,7 +61,7 @@ def _maybe_refresh_rss(conn: sqlite3.Connection) -> None:
     try:
         from fearnation_mcp.crawler import refresh_rss
 
-        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+        with make_http_client(timeout=15.0, follow_redirects=True) as client:
             refresh_rss(client, conn)
     except Exception as exc:  # noqa: BLE001 — log + continue serving
         log.warning("rss background refresh failed", extra={"error": str(exc)})
@@ -91,7 +95,7 @@ def _maybe_weekly_sweep(conn: sqlite3.Connection) -> None:
             from fearnation_mcp.crawler import crawl_all
 
             bg_conn = _get_conn()
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            with make_http_client(timeout=30.0, follow_redirects=True) as client:
                 crawl_all(client, bg_conn)
                 set_meta(
                     bg_conn,
@@ -136,7 +140,7 @@ def _bootstrap_metadata(conn: sqlite3.Connection) -> None:
             try:
                 from fearnation_mcp.crawler import crawl_all
 
-                with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                with make_http_client(timeout=30.0, follow_redirects=True) as client:
                     crawl_all(client, bg_conn)
                     set_meta(
                         bg_conn,

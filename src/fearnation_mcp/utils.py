@@ -10,6 +10,8 @@ import sys
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
+import httpx
+
 _SLUG_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -104,3 +106,20 @@ def get_logger(name: str) -> logging.Logger:
         logger.setLevel(logging.INFO)
         logger.propagate = False
     return logger
+
+
+def make_http_client(**kwargs: object) -> httpx.Client:
+    """Create an ``httpx.Client`` pinned to an IPv4 source address.
+
+    Rationale: some user networks have broken IPv6 egress to Cloudflare
+    edges (silent TLS resets on the IPv6 path). httpx does not fall back
+    from IPv6 to IPv4 the way curl does, so the default stack fails
+    outright on such networks. Pinning ``local_address='0.0.0.0'``
+    forces IPv4 throughout, which is fine for FearNation's Cloudflare
+    dual-stack endpoint (``A`` records are always reachable) and has
+    no side effects on healthy dual-stack networks.
+
+    Callers may override the transport by passing ``transport=``.
+    """
+    kwargs.setdefault("transport", httpx.HTTPTransport(local_address="0.0.0.0"))
+    return httpx.Client(**kwargs)  # type: ignore[arg-type]
