@@ -157,6 +157,10 @@ class TestSearchItems:
         assert len(hits) == 1
         assert hits[0].slug == "p2"
 
+    def test_reversed_date_range_raises(self, conn: sqlite3.Connection) -> None:
+        with pytest.raises(ValueError, match="date_from"):
+            search_items(conn, "华为", date_from="2024-02-01", date_to="2024-01-01")
+
     def test_limit(self, conn: sqlite3.Connection) -> None:
         items = [("新闻", f"标题{i}", "正文") for i in range(30)]
         _seed_post(conn, items=items)

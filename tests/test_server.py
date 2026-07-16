@@ -10,7 +10,13 @@ import pytest
 
 from fearnation_mcp.db import ItemRow, PostRow, init_schema, set_meta, upsert_items, upsert_post
 from fearnation_mcp.search import normalize_text
-from fearnation_mcp.server import discover, get_post, list_recent, search_news
+from fearnation_mcp.server import (
+    _parse_meta_timestamp,
+    discover,
+    get_post,
+    list_recent,
+    search_news,
+)
 
 
 def _seed_full(conn: sqlite3.Connection, today: date = date(2024, 1, 16)) -> None:
@@ -38,6 +44,14 @@ def _seed_full(conn: sqlite3.Connection, today: date = date(2024, 1, 16)) -> Non
         upsert_items(conn, slug, items, pub_date=pub_date)
     # Pretend RSS is fresh so server doesn't attempt network refresh
     set_meta(conn, "last_rss_fetch", datetime.now(UTC).isoformat(timespec="seconds"))
+
+
+class TestMetaTimestamp:
+    def test_malformed_value_is_treated_as_missing(self) -> None:
+        assert _parse_meta_timestamp("not-a-date") is None
+
+    def test_legacy_naive_value_is_treated_as_utc(self) -> None:
+        assert _parse_meta_timestamp("2024-01-15T12:00:00") == datetime(2024, 1, 15, 12, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -148,3 +162,7 @@ class TestDiscover:
     def test_invalid_date_raises(self, conn: sqlite3.Connection) -> None:
         with pytest.raises(ValueError):
             discover(date_from="bad")
+
+    def test_reversed_date_range_raises(self, conn: sqlite3.Connection) -> None:
+        with pytest.raises(ValueError, match="date_from"):
+            discover(date_from="2024-02-01", date_to="2024-01-01")

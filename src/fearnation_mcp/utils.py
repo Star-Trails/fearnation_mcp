@@ -39,12 +39,30 @@ def build_post_url(slug: str) -> str:
     return resolved
 
 
+def validate_site_url(url: str) -> str:
+    """Validate that an absolute URL is pinned to FearNation over HTTPS."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc != "fearnation.club":
+        raise ValueError(f"URL must use https://fearnation.club: {url!r}")
+    return url
+
+
 def validate_iso_date(date_str: str) -> str:
     """Validate an ISO 8601 date string (YYYY-MM-DD)."""
     if not _ISO_DATE_RE.match(date_str):
         raise ValueError(f"Invalid ISO date: {date_str!r}")
     datetime.strptime(date_str, "%Y-%m-%d")
     return date_str
+
+
+def validate_date_range(date_from: str | None, date_to: str | None) -> None:
+    """Validate optional ISO dates and require an ascending inclusive range."""
+    if date_from:
+        validate_iso_date(date_from)
+    if date_to:
+        validate_iso_date(date_to)
+    if date_from and date_to and date_from > date_to:
+        raise ValueError("date_from must be on or before date_to")
 
 
 class _JsonLinesFormatter(logging.Formatter):

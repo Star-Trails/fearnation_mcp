@@ -46,7 +46,8 @@ class RobotsRules:
     def from_text(cls, text: str, base_url: str = _BASE_URL) -> RobotsRules:
         """Parse robots.txt text, honoring only `User-agent: *` rules."""
         disallow: list[str] = []
-        in_star = False
+        current_agents: list[str] = []
+        group_has_rules = False
         for raw_line in text.splitlines():
             line = raw_line.split("#", 1)[0].strip()
             if not line or ":" not in line:
@@ -55,9 +56,14 @@ class RobotsRules:
             key = key.strip().lower()
             value = value.strip()
             if key == "user-agent":
-                in_star = value == "*"
-            elif key == "disallow" and in_star:
-                disallow.append(value)
+                if group_has_rules:
+                    current_agents = []
+                    group_has_rules = False
+                current_agents.append(value.lower())
+            elif key == "disallow":
+                group_has_rules = True
+                if "*" in current_agents:
+                    disallow.append(value)
         return cls(
             base_url=base_url,
             disallow_paths=tuple(disallow),

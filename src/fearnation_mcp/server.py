@@ -24,6 +24,7 @@ from fearnation_mcp.db import DB_PATH, get_connection, get_meta, set_meta
 from fearnation_mcp.utils import (
     get_logger,
     make_http_client,
+    validate_date_range,
     validate_iso_date,
     validate_slug,
 )
@@ -32,6 +33,19 @@ log = get_logger(__name__)
 
 # Test override for "today" — None in production.
 _TODAY_OVERRIDE: date | None = None
+_RSS_REFRESH_LOCK = threading.Lock()
+_SITEMAP_SWEEP_LOCK = threading.Lock()
+
+
+def _parse_meta_timestamp(value: str | None) -> datetime | None:
+    """Parse stored timestamps defensively, treating legacy naive values as UTC."""
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -50,7 +64,7 @@ def _db_conn() -> Generator[sqlite3.Connection, None, None]:
 
 
 def _maybe_refresh_rss(conn: sqlite3.Connection) -> None:
-    """Refresh RSS in background if last_rss_fetch is stale (> 60 min).
+    """Refresh RSS in a deduplicated background thread when stale (> 60 min).
 
     If ``last_rss_fetch`` is None (never fetched — e.g. a brand-new install
     whose bootstrap crawl has just finished), attempt ``refresh_rss`` once
@@ -58,23 +72,31 @@ def _maybe_refresh_rss(conn: sqlite3.Connection) -> None:
     cooldown. Errors are swallowed (RSS failures must not break user
     queries — spec §6.1).
     """
-    last = get_meta(conn, "last_rss_fetch")
-    if last is not None:
-        try:
-            last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-        except ValueError:
-            return
+    last_dt = _parse_meta_timestamp(get_meta(conn, "last_rss_fetch"))
+    if last_dt is not None:
         age = datetime.now(UTC) - last_dt
         if age <= timedelta(minutes=60):
             return  # fresh enough
-    # Either never fetched OR stale → refresh now.
-    try:
-        from fearnation_mcp.crawler import refresh_rss
+    if not _RSS_REFRESH_LOCK.acquire(blocking=False):
+        return
 
-        with make_http_client(timeout=15.0, follow_redirects=True) as client:
-            refresh_rss(client, conn)
-    except Exception as exc:  # noqa: BLE001 — log + continue serving
-        log.warning("rss background refresh failed", extra={"error": str(exc)})
+    def _bg() -> None:
+        try:
+            from fearnation_mcp.crawler import refresh_rss
+
+            with _db_conn() as bg_conn:
+                with make_http_client(timeout=15.0, follow_redirects=True) as client:
+                    refresh_rss(client, bg_conn)
+        except Exception as exc:  # noqa: BLE001 — log + continue serving
+            log.warning("rss background refresh failed", extra={"error": str(exc)})
+        finally:
+            _RSS_REFRESH_LOCK.release()
+
+    try:
+        threading.Thread(target=_bg, daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        _RSS_REFRESH_LOCK.release()
+        log.warning("could not start rss refresh thread", extra={"error": str(exc)})
 
 
 def _maybe_weekly_sweep(conn: sqlite3.Connection) -> None:
@@ -93,12 +115,11 @@ def _maybe_weekly_sweep(conn: sqlite3.Connection) -> None:
     if last is None:
         # First-run bootstrap is owned by the lifespan handler.
         return
-    try:
-        last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-    except ValueError:
-        return
-    if datetime.now(UTC) - last_dt <= timedelta(days=7):
+    last_dt = _parse_meta_timestamp(last)
+    if last_dt is not None and datetime.now(UTC) - last_dt <= timedelta(days=7):
         return  # swept recently
+    if not _SITEMAP_SWEEP_LOCK.acquire(blocking=False):
+        return
 
     def _bg() -> None:
         try:
@@ -106,17 +127,24 @@ def _maybe_weekly_sweep(conn: sqlite3.Connection) -> None:
 
             with _db_conn() as bg_conn:
                 with make_http_client(timeout=30.0, follow_redirects=True) as client:
-                    crawl_all(client, bg_conn)
-                with bg_conn:
-                    set_meta(
-                        bg_conn,
-                        "last_sitemap_sweep",
-                        datetime.now(UTC).isoformat(timespec="seconds"),
-                    )
+                    report = crawl_all(client, bg_conn)
+                if report.completed:
+                    with bg_conn:
+                        set_meta(
+                            bg_conn,
+                            "last_sitemap_sweep",
+                            datetime.now(UTC).isoformat(timespec="seconds"),
+                        )
         except Exception as exc:  # noqa: BLE001
             log.warning("weekly sitemap sweep failed", extra={"error": str(exc)})
+        finally:
+            _SITEMAP_SWEEP_LOCK.release()
 
-    threading.Thread(target=_bg, daemon=True).start()
+    try:
+        threading.Thread(target=_bg, daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        _SITEMAP_SWEEP_LOCK.release()
+        log.warning("could not start sitemap sweep thread", extra={"error": str(exc)})
 
 
 def _bootstrap_metadata(conn: sqlite3.Connection) -> None:
@@ -151,13 +179,14 @@ def _bootstrap_metadata(conn: sqlite3.Connection) -> None:
                     from fearnation_mcp.crawler import crawl_all
 
                     with make_http_client(timeout=30.0, follow_redirects=True) as client:
-                        crawl_all(client, bg_conn)
-                    with bg_conn:
-                        set_meta(
-                            bg_conn,
-                            "last_sitemap_sweep",
-                            datetime.now(UTC).isoformat(timespec="seconds"),
-                        )
+                        report = crawl_all(client, bg_conn)
+                    if report.completed:
+                        with bg_conn:
+                            set_meta(
+                                bg_conn,
+                                "last_sitemap_sweep",
+                                datetime.now(UTC).isoformat(timespec="seconds"),
+                            )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("bootstrap crawl failed", extra={"error": str(exc)})
             else:
@@ -352,10 +381,7 @@ def discover(
     Filter by title substring (query), post_type ("世界苦茶" or "台海危機ALERT"),
     or date range (ISO YYYY-MM-DD). At least one filter recommended.
     """
-    if date_from:
-        validate_iso_date(date_from)
-    if date_to:
-        validate_iso_date(date_to)
+    validate_date_range(date_from, date_to)
 
     with _db_conn() as conn:
         _maybe_refresh_rss(conn)

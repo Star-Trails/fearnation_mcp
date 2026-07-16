@@ -127,6 +127,18 @@ class TestKoenigCardExclusion:
             assert "点击支持" not in item.body_text
             assert "点击支持" not in item.headline
 
+    def test_nested_paragraph_in_card_excluded(self) -> None:
+        html = _wrap(
+            "<h1>新闻</h1>"
+            "<p><strong>• 标题</strong><br>正文</p>"
+            '<div class="kg-card kg-callout-card">'
+            "<p><strong>• 广告标题</strong><br>广告正文</p>"
+            "</div>"
+            "<p><strong>• 标题2</strong><br>正文2</p>"
+        )
+        result = parse_post("s", html)
+        assert [item.headline for item in result.items] == ["标题", "标题2"]
+
 
 class TestFinancialData:
     def test_ku_cha_shu_ju_block_extracts_financial_rows(self) -> None:
@@ -143,6 +155,11 @@ class TestFinancialData:
         assert "BTC" in fields
         assert len(result.items) == 1
         assert result.items[0].section == "中国新闻"
+
+    def test_digits_in_field_name_are_not_used_as_value(self) -> None:
+        html = _wrap("<h1>苦茶数据</h1><p>沪深300 4000</p>")
+        result = parse_post("s", html)
+        assert [(row.field, row.value) for row in result.financial_data] == [("沪深300", "4000")]
 
 
 class TestPostTypeDetection:
@@ -178,3 +195,10 @@ class TestMalformedResilience:
         )
         result = parse_post("s", html)
         assert result.pub_date is None
+
+    def test_invalid_pub_date_is_ignored(self) -> None:
+        html = _wrap(
+            "<h1>新闻</h1><p><strong>• 标题</strong><br>正文</p>",
+            pub_date="2024-02-30",
+        )
+        assert parse_post("s", html).pub_date is None

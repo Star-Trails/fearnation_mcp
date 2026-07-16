@@ -38,6 +38,14 @@ class TestRobotsRules:
         assert rules.is_allowed("/google-only/")
         assert not rules.is_allowed("/all/")
 
+    def test_consecutive_user_agents_share_rules(self) -> None:
+        rules = RobotsRules.from_text(
+            "User-agent: *\nUser-agent: FearNationBot\nDisallow: /shared/\n"
+            "User-agent: googlebot\nDisallow: /google-only/\n"
+        )
+        assert not rules.is_allowed("/shared/post")
+        assert rules.is_allowed("/google-only/post")
+
 
 class _MockResp:
     def __init__(self, status: int, text: str) -> None:

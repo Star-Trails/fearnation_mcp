@@ -17,7 +17,9 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html import escape
 from typing import Any
+from urllib.parse import urlparse
 
 import feedparser  # type: ignore[reportMissingTypeStubs]
 import httpx
@@ -34,7 +36,7 @@ from fearnation_mcp.db import (
 from fearnation_mcp.parser import ParsedPost, parse_post
 from fearnation_mcp.robots import fetch_robots_rules
 from fearnation_mcp.search import normalize_text
-from fearnation_mcp.utils import build_post_url, get_logger, validate_slug
+from fearnation_mcp.utils import build_post_url, get_logger, validate_site_url, validate_slug
 
 log = get_logger(__name__)
 
@@ -66,6 +68,7 @@ class CrawlReport:
     items_extracted: int = 0
     financial_rows: int = 0
     duration_sec: float = 0.0
+    completed: bool = False
 
 
 def fetch_url(client: httpx.Client, url: str, timeout: float = 15.0) -> str:
@@ -127,8 +130,11 @@ def parse_sitemap(xml_text: str) -> list[SitemapEntry]:
 
 def _slug_from_link(link: str) -> str:
     """Extract slug from a fearnation URL."""
-    path = link.rstrip("/")
-    slug = path.rsplit("/", 1)[-1]
+    validate_site_url(link)
+    path = urlparse(link).path.strip("/")
+    if not path or "/" in path:
+        raise ValueError(f"URL is not a root-level post URL: {link!r}")
+    slug = path
     validate_slug(slug)
     return slug
 
@@ -289,6 +295,11 @@ def crawl_all(
         entries = parse_sitemap(xml_text)
         for entry in entries:
             if entry.is_sitemap:
+                try:
+                    validate_site_url(entry.loc)
+                except ValueError:
+                    log.warning("off-site sitemap URL skipped", extra={"loc": entry.loc})
+                    continue
                 pending_sitemaps.append(entry.loc)
             else:
                 post_entries.append(entry)
@@ -335,6 +346,9 @@ def crawl_all(
                 item_count = crawl_post(client, conn, slug, lastmod=entry.lastmod)
                 report.posts_fetched += 1
                 report.items_extracted += item_count
+                report.financial_rows += conn.execute(
+                    "SELECT COUNT(*) FROM financial_data WHERE post_slug=?", (slug,)
+                ).fetchone()[0]
                 succeeded = True
             except (httpx.HTTPError, OSError) as exc:
                 last_err = str(exc)
@@ -361,6 +375,7 @@ def crawl_all(
             datetime.now(UTC).isoformat(timespec="seconds"),
         )
     report.duration_sec = time.time() - start
+    report.completed = True
     log.info(
         "full crawl complete",
         extra={
@@ -376,9 +391,10 @@ def crawl_all(
 def _wrap_rss_html(content_html: str, title: str, pub_date: str) -> str:
     """Wrap RSS content:encoded into a full HTML doc for parser."""
     pub_iso = f"{pub_date}T08:00:00.000Z" if pub_date else ""
+    safe_title = escape(title)
     return f"""<!DOCTYPE html>
 <html><head>
-<title>{title}</title>
+<title>{safe_title}</title>
 <meta property="article:published_time" content="{pub_iso}">
 </head><body>
 <main class="post-content">
@@ -404,9 +420,12 @@ def refresh_rss(client: httpx.Client, conn: sqlite3.Connection) -> int:
         if not rules.is_allowed(item.link):
             log.info("robots.txt disallows rss item, skipping", extra={"link": item.link})
             continue
+        if not item.content_html.strip():
+            log.warning("rss item has no content, skipping", extra={"slug": item.slug})
+            continue
         wrapped_html = _wrap_rss_html(item.content_html, item.title, item.pub_date or "")
         parsed = parse_post(item.slug, wrapped_html)
-        upsert_parsed_post(conn, item.slug, item.content_html, parsed)
+        upsert_parsed_post(conn, item.slug, wrapped_html, parsed)
         new_count += 1
 
     with conn:

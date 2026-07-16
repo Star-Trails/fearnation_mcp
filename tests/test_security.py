@@ -7,7 +7,9 @@ import pytest
 
 from fearnation_mcp.utils import (
     build_post_url,
+    validate_date_range,
     validate_iso_date,
+    validate_site_url,
     validate_slug,
 )
 
@@ -60,6 +62,27 @@ class TestBuildPostUrl:
             build_post_url("foo?bar=1")
 
 
+class TestValidateSiteUrl:
+    def test_accepts_pinned_https_origin(self) -> None:
+        assert (
+            validate_site_url("https://fearnation.club/sitemap-posts.xml")
+            == "https://fearnation.club/sitemap-posts.xml"
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://fearnation.club/sitemap.xml",
+            "https://evil.example/sitemap.xml",
+            "https://fearnation.club.evil.example/sitemap.xml",
+            "https://user@fearnation.club/sitemap.xml",
+        ],
+    )
+    def test_rejects_unpinned_origins(self, url: str) -> None:
+        with pytest.raises(ValueError):
+            validate_site_url(url)
+
+
 class TestValidateIsoDate:
     def test_valid(self) -> None:
         assert validate_iso_date("2024-01-15") == "2024-01-15"
@@ -71,6 +94,10 @@ class TestValidateIsoDate:
     def test_rejects_invalid(self, bad: str) -> None:
         with pytest.raises(ValueError):
             validate_iso_date(bad)
+
+    def test_rejects_reversed_date_range(self) -> None:
+        with pytest.raises(ValueError, match="date_from"):
+            validate_date_range("2024-02-01", "2024-01-01")
 
 
 class TestJsonLinesLogger:

@@ -25,7 +25,7 @@ from typing import Literal, cast
 
 import opencc
 
-from fearnation_mcp.utils import get_logger, validate_iso_date
+from fearnation_mcp.utils import get_logger, validate_date_range
 
 log = get_logger(__name__)
 
@@ -130,10 +130,7 @@ def search_items(
         mode: ``and`` requires every whitespace-delimited keyword to match;
             ``phrase`` requires the complete query to appear as one phrase.
     """
-    if date_from:
-        validate_iso_date(date_from)
-    if date_to:
-        validate_iso_date(date_to)
+    validate_date_range(date_from, date_to)
     if limit < 1 or limit > 200:
         raise ValueError(f"limit must be in [1, 200], got {limit}")
 

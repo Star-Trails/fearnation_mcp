@@ -90,6 +90,26 @@ class TestPostUpsert:
         assert len(rows) == 1
         assert rows[0]["title"] == "新标题"
 
+    def test_partial_update_preserves_existing_metadata(self, conn: sqlite3.Connection) -> None:
+        upsert_post(conn, _make_post())
+        upsert_post(
+            conn,
+            PostRow(
+                slug="test-slug",
+                title="",
+                pub_date=None,
+                post_type=None,
+                raw_html="",
+                lastmod=None,
+            ),
+        )
+        row = conn.execute("SELECT * FROM posts WHERE slug='test-slug'").fetchone()
+        assert row["title"] == "测试标题"
+        assert row["pub_date"] == "2024-01-15"
+        assert row["post_type"] == "世界苦茶"
+        assert row["raw_html"] == "<p>raw</p>"
+        assert row["lastmod"] == "2024-01-15T00:00:00Z"
+
 
 def _make_items(slug: str, pub_date: str = "2024-01-15") -> list[ItemRow]:
     return [

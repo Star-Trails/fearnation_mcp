@@ -140,12 +140,12 @@ def upsert_post(conn: sqlite3.Connection, post: PostRow) -> None:
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
-            title=excluded.title,
-            pub_date=excluded.pub_date,
-            post_type=excluded.post_type,
-            raw_html=excluded.raw_html,
+            title=COALESCE(NULLIF(excluded.title, ''), posts.title),
+            pub_date=COALESCE(excluded.pub_date, posts.pub_date),
+            post_type=COALESCE(excluded.post_type, posts.post_type),
+            raw_html=COALESCE(NULLIF(excluded.raw_html, ''), posts.raw_html),
             parsed_at=excluded.parsed_at,
-            lastmod=excluded.lastmod,
+            lastmod=COALESCE(excluded.lastmod, posts.lastmod),
             last_seen=excluded.last_seen
         """,
         (

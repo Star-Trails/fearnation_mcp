@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from typing import cast
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 
-from fearnation_mcp.utils import get_logger
+from fearnation_mcp.utils import get_logger, validate_iso_date
 
 log = get_logger(__name__)
 
@@ -50,8 +52,8 @@ class ParsedPost:
     title: str
     pub_date: str | None
     post_type: str | None
-    items: list[ParsedItem] = field(default_factory=list)
-    financial_data: list[FinancialDataRow] = field(default_factory=list)
+    items: list[ParsedItem] = field(default_factory=lambda: list[ParsedItem]())
+    financial_data: list[FinancialDataRow] = field(default_factory=lambda: list[FinancialDataRow]())
 
 
 def _strip_bullet(text: str) -> str:
@@ -106,29 +108,46 @@ def _detect_post_type(title: str) -> str | None:
 
 def _extract_pub_date(soup: BeautifulSoup) -> str | None:
     """Extract ISO pub_date from: JSON-LD, <meta>, or <time>."""
+
+    def _date_prefix(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        candidate = value[:10]
+        try:
+            return validate_iso_date(candidate)
+        except ValueError:
+            return None
+
     for script in soup.find_all("script", type="application/ld+json"):
         try:
-            data = json.loads(script.string or "")
-            if isinstance(data, dict):
-                dt = data.get("datePublished")
-                if dt:
-                    return dt[:10]
+            loaded: object = json.loads(script.string or "")
+            if isinstance(loaded, dict):
+                data = cast(dict[str, object], loaded)
+                if parsed := _date_prefix(data.get("datePublished")):
+                    return parsed
         except (json.JSONDecodeError, TypeError):
             continue
     meta = soup.find("meta", attrs={"property": "article:published_time"})
-    if meta and meta.get("content"):
-        return meta["content"][:10]
+    if meta and (parsed := _date_prefix(meta.get("content"))):
+        return parsed
     t = soup.find("time", attrs={"datetime": True})
-    if t and t.get("datetime"):
-        return t["datetime"][:10]
+    if t and (parsed := _date_prefix(t.get("datetime"))):
+        return parsed
     return None
 
 
 def _is_koenig_card(tag: Tag) -> bool:
-    if not isinstance(tag, Tag):
-        return False
-    classes = tag.get("class") or []
-    return any(c.startswith("kg-card") for c in classes)
+    classes = tag.get("class")
+    if isinstance(classes, str):
+        return classes.startswith("kg-card")
+    if isinstance(classes, list):
+        return any(value.startswith("kg-card") for value in classes)
+    return False
+
+
+def _is_inside_koenig_card(tag: Tag) -> bool:
+    """Return whether a tag is a Koenig card or is nested inside one."""
+    return _is_koenig_card(tag) or any(_is_koenig_card(parent) for parent in tag.parents)
 
 
 _FINANCIAL_FIELD_RE = re.compile(
@@ -149,7 +168,9 @@ def _parse_financial_block(block: Tag) -> list[FinancialDataRow]:
         if not m:
             continue
         field_name = m.group(1)
-        val_match = _FINANCIAL_VALUE_RE.search(tok)
+        # Search after the field so digits inside names such as ``沪深300``
+        # are not mistaken for the quoted value.
+        val_match = _FINANCIAL_VALUE_RE.search(tok, m.end())
         if val_match:
             out.append(FinancialDataRow(field=field_name, value=val_match.group(1).strip()))
     return out
@@ -196,7 +217,7 @@ def parse_post(slug: str, raw_html: str) -> ParsedPost:
     for element in main.descendants:
         if not isinstance(element, Tag):
             continue
-        if _is_koenig_card(element):
+        if _is_inside_koenig_card(element):
             continue
         if element.name == "h1":
             h_text = element.get_text(strip=True)
