@@ -7,13 +7,13 @@ the site mixes Simplified/Traditional Chinese (台海危機ALERT is Traditional-
 to Simplified before MATCH.
 
 Additionally, since SQLite's ``unicode61`` tokenizer treats contiguous CJK
-runs as a single whole-word token (so ``MATCH '华为'`` silently returns 0 rows
-against a doc ``华为最新进展``), ``normalize_text`` inserts a space between every
+runs as a single whole-word token (so ``MATCH '稀土'`` silently returns 0 rows
+against a doc ``稀土供应链进展``), ``normalize_text`` inserts a space between every
 adjacent CJK character pair (and between CJK and a following ASCII alphanumeric).
 Both index-time ``_norm`` column values and the query string pass through
 ``normalize_text``, so each CJK char becomes an adjacent single-token entry —
-the implicit-phrase MATCH then picks up substring queries like ``"华 为"``
-against a doc normalized to ``"华 为 新 闻"``.
+the implicit-phrase MATCH then picks up substring queries like ``"稀 土"``
+against a doc normalized to ``"稀 土 供 应 链"``.
 """
 
 from __future__ import annotations

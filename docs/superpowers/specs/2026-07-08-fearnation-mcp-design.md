@@ -22,7 +22,7 @@
 | `/sitemap-posts.xml` | 全量历史文章 slug 清单 | 只有 `<loc>` + `<lastmod>`，**无标题/发布日期** |
 | `/<slug>/` HTML | 单篇完整正文 | 解析入口 |
 
-**关键限制**：sitemap 无标题/发布日期，是放弃懒加载、改用全量爬取的根本原因——`discover("华为")` 无法匹配中文内容（sitemap 只有 romanized slug）。
+**关键限制**：sitemap 无标题/发布日期，是放弃懒加载、改用全量爬取的根本原因——`discover("稀土")` 无法匹配中文内容（sitemap 只有 romanized slug）。
 
 ## 3. 架构：全量爬取 + RSS 增量
 
@@ -121,14 +121,14 @@ meta(
 
 #### Tokenizer：unicode61 + remove_diacritics 2（不用 jieba）
 
-- 规模仅约 300 篇 × 35 条 ≈ 10,500 行，unicode61 的隐式短语匹配（`MATCH '华为'` tokenized 为 `['华', '为']` 隐式短语匹配，要求相邻）对「华为」「台海军演」足够。
+- 规模仅约 300 篇 × 35 条 ≈ 10,500 行，unicode61 的隐式短语匹配（`MATCH '稀土'` tokenized 为 `['稀', '土']` 隐式短语匹配，要求相邻）对「稀土」「台海军演」足够。
 - jieba 在繁体文本上反而加噪声。
 - 真正影响的不是分词器，而是简繁脚本不匹配问题（见下）。
 
 #### OpenCC 归一化（最高 ROI 单点）
 
 - 站点简繁混用：「台海危機 ALERT」繁体标题、「世界苦茶」简体正文。
-- 不加 OpenCC 的话，简体查询「华为」会**静默零结果**匹配繁体「華為」内容。
+- 不加 OpenCC 的话，简体查询「稀土开采」会**静默零结果**匹配繁体「稀土開採」内容。
 - Schema 已加 `headline_norm` / `body_norm` 列（OpenCC `t2s` 转换），FTS5 索引 `_norm` 列。
 - 查询时先 OpenCC 归一化 query string 再 `MATCH`。
 - 显示用 `headline` / `body_text` 保留原文脚本。

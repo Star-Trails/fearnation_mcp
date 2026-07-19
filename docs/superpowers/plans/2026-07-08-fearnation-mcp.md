@@ -1665,14 +1665,14 @@ def conn() -> sqlite3.Connection:
 
 class TestNormalizeText:
     def test_traditional_chinese_to_simplified(self) -> None:
-        assert normalize_text("華為") == "华为"
+        assert normalize_text("稀土開採") == "稀土开采"
 
     def test_already_simplified_unchanged(self) -> None:
-        assert normalize_text("华为") == "华为"
+        assert normalize_text("稀土开采") == "稀土开采"
 
     def test_mixed_keeps_non_cjk(self) -> None:
-        assert "USD" in normalize_text("USD 華為 7.2")
-        assert "华为" in normalize_text("USD 華為 7.2")
+        assert "USD" in normalize_text("USD 稀土開採 7.2")
+        assert "稀土开采" in normalize_text("USD 稀土開採 7.2")
 
     def test_empty_string(self) -> None:
         assert normalize_text("") == ""
@@ -1685,7 +1685,7 @@ def _seed_post(
     pub_date: str = "2024-01-15",
     items: list[tuple[str, str, str]] | None = None,
 ) -> None:
-    items = items or [("中国新闻", "华为新手机发布", "正文A")]
+    items = items or [("产业新闻", "稀土供应链出现新进展", "正文A")]
     upsert_post(conn, PostRow(
         slug=slug, title=title, pub_date=pub_date,
         post_type="世界苦茶", raw_html="x",
@@ -1701,28 +1701,28 @@ def _seed_post(
 class TestSearchItems:
     def test_basic_match(self, conn: sqlite3.Connection) -> None:
         _seed_post(conn)
-        hits = search_items(conn, "华为")
+        hits = search_items(conn, "稀土")
         assert len(hits) == 1
-        assert hits[0].headline == "华为新手机发布"
+        assert hits[0].headline == "稀土供应链出现新进展"
         assert hits[0].pub_date == "2024-01-15"
         assert hits[0].slug == "s"
 
     def test_cross_script_simplified_query_finds_traditional_content(
         self, conn: sqlite3.Connection
     ) -> None:
-        # Seed with traditional chinese content (華為)
-        _seed_post(conn, items=[("中国新闻", "華為新聞", "正文")])
-        # Query with simplified 华为 → must still find traditional content
-        hits = search_items(conn, "华为")
+        # Seed with Traditional Chinese content (稀土開採)
+        _seed_post(conn, items=[("产业新闻", "稀土開採政策更新", "正文")])
+        # Query with Simplified Chinese 稀土开采 → must still find Traditional content
+        hits = search_items(conn, "稀土开采")
         assert len(hits) >= 1
-        assert "華為" in hits[0].headline or "华为" in hits[0].headline
+        assert "稀土開採" in hits[0].headline or "稀土开采" in hits[0].headline
 
     def test_cross_script_traditional_query_finds_simplified_content(
         self, conn: sqlite3.Connection
     ) -> None:
-        _seed_post(conn, items=[("中国新闻", "华为新闻", "正文")])
-        # Query with traditional 華為 → must find simplified content
-        hits = search_items(conn, "華為")
+        _seed_post(conn, items=[("产业新闻", "稀土开采政策更新", "正文")])
+        # Query with Traditional Chinese 稀土開採 → must find Simplified content
+        hits = search_items(conn, "稀土開採")
         assert len(hits) == 1
 
     def test_section_filter(self, conn: sqlite3.Connection) -> None:
@@ -1736,8 +1736,8 @@ class TestSearchItems:
 
     def test_date_range_filter(self, conn: sqlite3.Connection) -> None:
         _seed_post(conn, slug="p1", pub_date="2024-01-10")
-        _seed_post(conn, slug="p2", pub_date="2024-02-10", items=[("中国新闻", "华为X", "y")])
-        hits = search_items(conn, "华为", date_from="2024-02-01")
+        _seed_post(conn, slug="p2", pub_date="2024-02-10", items=[("产业新闻", "稀土X", "y")])
+        hits = search_items(conn, "稀土", date_from="2024-02-01")
         assert len(hits) == 1
         assert hits[0].slug == "p2"
 
@@ -1892,7 +1892,7 @@ def search_items(
 Run: `uv run pytest tests/test_search.py -v`
 Expected: all pass, including cross-script assertions.
 
-If `test_cross_script_*` fails, debug OpenCC conversion — confirm `normalize_text("華為")` returns `"华为"`.
+If `test_cross_script_*` fails, debug OpenCC conversion — confirm `normalize_text("稀土開採")` returns `"稀土开采"`.
 
 - [ ] **Step 5: Lint + typecheck**
 
@@ -1972,7 +1972,7 @@ git commit -m "feat(search): FTS5 search with OpenCC t2s cross-script normalizat
 <h1>苦茶数据</h1>
 <p>USD/CNH 7.21, USD/JPY 145.5</p>
 <h1>中国新闻</h1>
-<p><strong>• 华为发布新手机</strong><br>华为宣布 Mate 70 系列发布日期</p>
+<p><strong>• 稀土供应链出现新进展</strong><br>行业机构发布稀土供需展望</p>
 <p><strong>• 上海自贸区扩展</strong><br>国务院宣布上海自贸区扩区方案</p>
 <h1>印太新闻</h1>
 <p><strong>• 日美联合军演</strong><br>自卫队与美军在冲绳周边举行联合演习</p>
@@ -2008,7 +2008,7 @@ git commit -m "feat(search): FTS5 search with OpenCC t2s cross-script normalizat
 <h1>苦茶数据</h1>
 <p>USD/CNH 7.21, USD/JPY 145.5, Brent $82</p>
 <h1>中国新闻</h1>
-<p><strong>• 华为发布新手机</strong><br>华为宣布 Mate 70 系列发布日期。</p>
+<p><strong>• 稀土供应链出现新进展</strong><br>行业机构发布稀土供需展望。</p>
 <p><strong>• 上海自贸区扩展</strong><br>国务院宣布上海自贸区扩区方案。</p>
 <h1>印太新闻</h1>
 <p><strong>• 日美联合军演</strong><br>自卫队与美军在冲绳周边举行联合演习。</p>
@@ -2664,8 +2664,8 @@ def _seed_full(conn: sqlite3.Connection, today: date = date(2024, 1, 16)) -> Non
         upsert_post(conn, PostRow(slug=slug, title=title, pub_date=pub_date,
                                   post_type=pt, raw_html="x"))
         items = [
-            ItemRow(section="中国新闻", headline=f"{title} 华为新闻",
-                    headline_norm=normalize_text(f"{title} 华为新闻"),
+            ItemRow(section="中国新闻", headline=f"{title} 稀土行业动态",
+                    headline_norm=normalize_text(f"{title} 稀土行业动态"),
                     body_text="正文", body_norm="正文", seq=0, pub_date=pub_date),
         ]
         upsert_items(conn, slug, items, pub_date=pub_date)
@@ -2688,7 +2688,7 @@ def conn(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
 
 class TestSearchNews:
     def test_basic_search(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为")
+        hits = search_news("稀土")
         assert len(hits) >= 3
         for hit in hits:
             assert "slug" in hit
@@ -2696,12 +2696,12 @@ class TestSearchNews:
             assert "pub_date" in hit
 
     def test_section_filter(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为", section="中国新闻")
+        hits = search_news("稀土", section="中国新闻")
         assert len(hits) >= 1
         assert all(h["section"] == "中国新闻" for h in hits)
 
     def test_date_from_filter(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为", date_from="2024-01-15")
+        hits = search_news("稀土", date_from="2024-01-15")
         assert all(h["pub_date"] >= "2024-01-15" for h in hits)
 
     def test_invalid_date_raises(self, conn: sqlite3.Connection) -> None:
@@ -2837,7 +2837,7 @@ def search_news(
     """Search FearNation news items by full-text query.
 
     Cross-script: Simplified Chinese queries also match Traditional content
-    (e.g., "华为" matches "華為") via OpenCC normalization.
+    (e.g., "稀土开采" matches "稀土開採") via OpenCC normalization.
     """
     from fearnation_mcp.search import search_items
     conn = _get_conn()
@@ -2996,7 +2996,7 @@ def t_search_news(
     """Search FearNation news items by full-text query.
 
     Cross-script: Simplified Chinese queries match Traditional content too
-    (e.g., "华为" matches "華為"). Returns items with slug, section, headline,
+    (e.g., "稀土开采" matches "稀土開採"). Returns items with slug, section, headline,
     body, pub_date, seq.
 
     Args:

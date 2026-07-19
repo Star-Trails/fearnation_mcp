@@ -33,8 +33,8 @@ def _seed_full(conn: sqlite3.Connection, today: date = date(2024, 1, 16)) -> Non
         items = [
             ItemRow(
                 section="中国新闻",
-                headline=f"{title} 华为新闻",
-                headline_norm=normalize_text(f"{title} 华为新闻"),
+                headline=f"{title} 稀土行业动态",
+                headline_norm=normalize_text(f"{title} 稀土行业动态"),
                 body_text="正文",
                 body_norm="正文",
                 seq=0,
@@ -69,7 +69,7 @@ def conn(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
 
 class TestSearchNews:
     def test_basic_search(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为")
+        hits = search_news("稀土")
         assert len(hits) >= 3
         for hit in hits:
             assert "slug" in hit
@@ -77,12 +77,12 @@ class TestSearchNews:
             assert "pub_date" in hit
 
     def test_section_filter(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为", section="中国新闻")
+        hits = search_news("稀土", section="中国新闻")
         assert len(hits) >= 1
         assert all(h["section"] == "中国新闻" for h in hits)
 
     def test_date_from_filter(self, conn: sqlite3.Connection) -> None:
-        hits = search_news("华为", date_from="2024-01-15")
+        hits = search_news("稀土", date_from="2024-01-15")
         assert all(h["pub_date"] >= "2024-01-15" for h in hits)
 
     def test_invalid_date_raises(self, conn: sqlite3.Connection) -> None:
@@ -90,13 +90,13 @@ class TestSearchNews:
             search_news("x", date_from="not-a-date")
 
     def test_and_mode(self, conn: sqlite3.Connection) -> None:
-        assert len(search_news("世界苦茶 华为", mode="and")) == 2
+        assert len(search_news("世界苦茶 稀土", mode="and")) == 2
 
     def test_phrase_mode(self, conn: sqlite3.Connection) -> None:
-        assert search_news("世界苦茶 华为", mode="phrase") == []
+        assert search_news("世界苦茶 稀土", mode="phrase") == []
 
     def test_connection_is_closed_after_success(self, conn: sqlite3.Connection) -> None:
-        search_news("华为")
+        search_news("稀土")
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             conn.execute("SELECT 1")
 

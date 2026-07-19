@@ -229,7 +229,7 @@ def search_news(
     """Search FearNation news items by full-text query.
 
     Cross-script: Simplified Chinese queries match Traditional content too
-    (e.g., "华为" matches "華為"). Returns items with slug, section, headline,
+    (e.g., "稀土开采" matches "稀土開採"). Returns items with slug, section, headline,
     body, pub_date, seq.
 
     Args:
